@@ -6,16 +6,20 @@ const Symbol = struct {
     data: []const u8,
 };
 
+const HIGH_BIT = 1 << 7;
+const PREFIX = [4]u8{ 'M' | HIGH_BIT, 'I' | HIGH_BIT, 'N' | HIGH_BIT, 'Z' | HIGH_BIT };
+pub const MAX_SYMBOL = 8;
+
 pub const Table = struct {
     n: u8 = 0,
     lengths: [255]u8,
-    symbols: [255][8]u8,
+    symbols: [255][MAX_SYMBOL]u8,
     index: [257]u8,
 
     pub fn init() Table {
         return .{
             .lengths = std.mem.zeroes([255]u8),
-            .symbols = std.mem.zeroes([255][8]u8),
+            .symbols = std.mem.zeroes([255][MAX_SYMBOL]u8),
             .index = std.mem.zeroes([257]u8),
         };
     }
@@ -24,7 +28,7 @@ pub const Table = struct {
     /// 1. `insert` must be ordered by the first character. You can't insert "world" before "hello".
     /// 2. The longest prefix must be inserted first. You can't insert "he" before "hello".
     pub fn insert(self: *Table, data: []const u8) void {
-        assert(data.len > 0 and data.len <= 8);
+        assert(data.len > 0 and data.len <= MAX_SYMBOL);
         const idx = self.n;
         self.n += 1;
         self.lengths[idx] = @intCast(u8, data.len);
@@ -72,6 +76,35 @@ pub const Table = struct {
         }
         return null;
     }
+
+    pub fn writeTo(self: *const Table, writer: anytype) !void {
+        try writer.writeAll(&PREFIX);
+        try writer.writeByte(1);
+        try writer.writeByte(self.n);
+        try writer.writeAll(self.lengths[0..self.n]);
+        const bin_symbols = @ptrCast([*]const u8, &self.symbols);
+        try writer.writeAll(bin_symbols[0 .. self.n * MAX_SYMBOL]);
+    }
+
+    pub fn readFrom(reader: anytype) !Table {
+        var res = Table.init();
+
+        const prefix = try reader.readBytesNoEof(PREFIX.len);
+        if (!std.mem.eql(u8, &PREFIX, &prefix)) return error.InvalidFormat;
+
+        const version = try reader.readByte();
+        if (version != 1) return error.InvalidFormat;
+
+        const n = try reader.readByte();
+        try reader.readNoEof(res.lengths[0..n]);
+
+        const bin_symbols = @ptrCast([*]u8, &res.symbols);
+        try reader.readNoEof(bin_symbols[0 .. n * MAX_SYMBOL]);
+
+        res.n = n;
+        res.buildIndex();
+        return res;
+    }
 };
 
 const testing = std.testing;
@@ -84,4 +117,23 @@ test "set and lookup" {
     try testing.expectEqualSlices(u8, "hello", tbl.lookup(0));
     try testing.expectEqualSlices(u8, "world", tbl.lookup(1));
     try testing.expectEqualSlices(u8, "", tbl.lookup(2));
+}
+
+test "serialization" {
+    var tbl = Table.init();
+    tbl.insert("hello");
+    tbl.insert("world");
+
+    var buf = std.ArrayList(u8).init(testing.allocator);
+    defer buf.deinit();
+
+    try tbl.writeTo(buf.writer());
+    // Prefix, version, n, (lengths + symbols) * 2 entries.
+    try testing.expectEqual(@as(usize, 4 + 1 + 1 + (1 + MAX_SYMBOL) * 2), buf.items.len);
+
+    var fbs = std.io.fixedBufferStream(buf.items);
+    var tbl2 = try Table.readFrom(fbs.reader());
+    try testing.expectEqualSlices(u8, "hello", tbl2.lookup(0));
+    try testing.expectEqualSlices(u8, "world", tbl2.lookup(1));
+    try testing.expectEqualSlices(u8, "", tbl2.lookup(2));
 }

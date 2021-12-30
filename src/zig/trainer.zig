@@ -1,11 +1,13 @@
 const std = @import("std");
 
 const encode = @import("./encoder.zig").encode;
-const Table = @import("table.zig").Table;
+const table_ns = @import("table.zig");
+const Table = table_ns.Table;
+const MAX_SYMBOL = table_ns.MAX_SYMBOL;
 
 pub const Trainer = struct {
     const Cand = struct {
-        data: [8]u8,
+        data: [MAX_SYMBOL]u8,
         len: u8,
         gain: usize,
 
@@ -58,13 +60,13 @@ pub const Trainer = struct {
         }
     }
 
-    fn decode(self: *const Trainer, code: usize, buf: *[8]u8, i: *u8) void {
+    fn decode(self: *const Trainer, code: usize, buf: *[MAX_SYMBOL]u8, i: *u8) void {
         if (code < 256) {
             buf[i.*] = @intCast(u8, code);
             i.* += 1;
         } else {
             const d = self.table.lookup(@intCast(u8, code - 256));
-            const len = @minimum(@intCast(u8, d.len), 8 - i.*);
+            const len = @minimum(@intCast(u8, d.len), MAX_SYMBOL - i.*);
             std.mem.copy(u8, buf[i.*..], d[0..len]);
             i.* += len;
         }
@@ -79,7 +81,7 @@ pub const Trainer = struct {
 
         var code1: usize = 0;
         while (code1 < m) : (code1 += 1) {
-            var cand: [8]u8 = undefined;
+            var cand: [MAX_SYMBOL]u8 = undefined;
             var i: u8 = 0;
 
             self.decode(code1, &cand, &i);
@@ -90,7 +92,7 @@ pub const Trainer = struct {
             }
 
             // If the first symbol is already of length 8 there's nothing to combine.
-            if (i == 8) continue;
+            if (i == MAX_SYMBOL) continue;
 
             var code2: usize = 0;
             while (code2 < m) : (code2 += 1) {
