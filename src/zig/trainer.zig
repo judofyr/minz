@@ -41,11 +41,7 @@ pub const Trainer = struct {
         var prev: ?usize = null;
 
         while (pos < text.len) {
-            const byte_idx = @as(usize, text[pos]);
-            self.count1[byte_idx] += 1;
-            if (prev) |p| self.count2[p][byte_idx] += 1;
-
-            if (self.table.findLongestSymbol(text[pos..])) |sym| {
+            if (self.table.findLongestMultiSymbol(text[pos..])) |sym| {
                 const sym_idx = 256 + @as(usize, sym.index);
 
                 self.count1[sym_idx] += 1;
@@ -54,6 +50,10 @@ pub const Trainer = struct {
                 pos += sym.data.len;
                 prev = sym_idx;
             } else {
+                const byte_idx = @as(usize, text[pos]);
+                self.count1[byte_idx] += 1;
+                if (prev) |p| self.count2[p][byte_idx] += 1;
+
                 pos += 1;
                 prev = byte_idx;
             }

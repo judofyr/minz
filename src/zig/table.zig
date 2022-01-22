@@ -77,6 +77,13 @@ pub const Table = struct {
         return null;
     }
 
+    pub fn findLongestMultiSymbol(self: *const Table, data: []const u8) ?Symbol {
+        if (self.findLongestSymbol(data)) |sym| {
+            if (sym.data.len > 1) return sym;
+        }
+        return null;
+    }
+
     pub fn writeTo(self: *const Table, writer: anytype) !void {
         try writer.writeAll(&PREFIX);
         try writer.writeByte(1);
