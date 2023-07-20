@@ -62,11 +62,11 @@ pub const Trainer = struct {
 
     fn decode(self: *const Trainer, code: usize, buf: *[MAX_SYMBOL]u8, i: *u8) void {
         if (code < 256) {
-            buf[i.*] = @intCast(u8, code);
+            buf[i.*] = @intCast(code);
             i.* += 1;
         } else {
-            const d = self.table.lookup(@intCast(u8, code - 256));
-            const len = @minimum(@intCast(u8, d.len), MAX_SYMBOL - i.*);
+            const d = self.table.lookup(@intCast(code - 256));
+            const len = @min(@as(u8, @intCast(d.len)), MAX_SYMBOL - i.*);
             std.mem.copy(u8, buf[i.*..], d[0..len]);
             i.* += len;
         }
@@ -124,11 +124,11 @@ pub const Trainer = struct {
 
         if (cands.items.len > 255) {
             // Only keep the 255 best candidates (by gain).
-            std.sort.sort(Cand, cands.items, {}, sorting.byGain);
+            std.mem.sort(Cand, cands.items, {}, sorting.byGain);
             cands.shrinkRetainingCapacity(255);
         }
 
-        std.sort.sort(Cand, cands.items, {}, sorting.byData);
+        std.mem.sort(Cand, cands.items, {}, sorting.byData);
 
         var res = Table.init();
         for (cands.items) |cand| {
@@ -153,7 +153,10 @@ test "training" {
         try encode(fbs.writer(), target, &tbl);
         try testing.expectEqual(c, fbs.getWritten().len);
 
-        var t = Trainer.init(&tbl);
+        var t = try testing.allocator.create(Trainer);
+        defer testing.allocator.destroy(t);
+
+        t.* = Trainer.init(&tbl);
         defer t.deinit();
         t.add(target);
         tbl = try t.build(testing.allocator);

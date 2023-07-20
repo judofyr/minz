@@ -5,14 +5,12 @@ const allocator = std.heap.c_allocator;
 
 pub fn main() !void {
     var args = std.process.args();
-    const binary_name = try args.next(allocator) orelse unreachable;
-    defer allocator.free(binary_name);
+    const binary_name = args.next() orelse unreachable;
 
-    const file_name = try args.next(allocator) orelse {
+    const file_name = args.next() orelse {
         std.debug.print("usage: {s} FILENAME\n", .{binary_name});
         std.process.exit(0);
     };
-    defer allocator.free(file_name);
 
     var data = std.ArrayList(u8).init(allocator);
     defer data.deinit();
@@ -68,5 +66,5 @@ pub fn main() !void {
     }
 
     std.debug.print("Uncompressed: {}\nCompressed:   {}\n", .{ uncompressed_size, compressed_size });
-    std.debug.print("Ratio: {d}\n", .{@intToFloat(f64, uncompressed_size) / @intToFloat(f64, compressed_size)});
+    std.debug.print("Ratio: {d}\n", .{@as(f64, @floatFromInt(uncompressed_size)) / @as(f64, @floatFromInt(compressed_size))});
 }

@@ -31,7 +31,7 @@ pub const Table = struct {
         assert(data.len > 0 and data.len <= MAX_SYMBOL);
         const idx = self.n;
         self.n += 1;
-        self.lengths[idx] = @intCast(u8, data.len);
+        self.lengths[idx] = @intCast(data.len);
         std.mem.copy(u8, &self.symbols[idx], data);
     }
 
@@ -89,7 +89,7 @@ pub const Table = struct {
         try writer.writeByte(1);
         try writer.writeByte(self.n);
         try writer.writeAll(self.lengths[0..self.n]);
-        const bin_symbols = @ptrCast([*]const u8, &self.symbols);
+        const bin_symbols: [*]const u8 = @ptrCast(&self.symbols);
         try writer.writeAll(bin_symbols[0 .. self.n * MAX_SYMBOL]);
     }
 
@@ -105,7 +105,7 @@ pub const Table = struct {
         const n = try reader.readByte();
         try reader.readNoEof(res.lengths[0..n]);
 
-        const bin_symbols = @ptrCast([*]u8, &res.symbols);
+        const bin_symbols: [*]u8 = @ptrCast(&res.symbols);
         try reader.readNoEof(bin_symbols[0 .. n * MAX_SYMBOL]);
 
         res.n = n;

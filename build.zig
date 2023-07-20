@@ -1,17 +1,25 @@
 const Builder = @import("std").build.Builder;
 
 pub fn build(b: *Builder) void {
+    const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
 
-    const exe = b.addExecutable("line-compressor", "src/zig/line-compressor.zig");
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
-    exe.install();
+    const exe = b.addExecutable(.{
+        .name = "line-compressor",
+        .root_source_file = .{ .path = "src/zig/line-compressor.zig" },
+        .optimize = optimize,
+        .target = target,
+    });
+    b.default_step.dependOn(&exe.step);
 
-    var main_tests = b.addTest("src/zig/main.zig");
-    main_tests.setBuildMode(mode);
+    const tests = b.addTest(.{
+        .root_source_file = .{ .path = "src/zig/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    const tests_run_step = b.addRunArtifact(tests);
+    tests_run_step.has_side_effects = true;
 
-    const test_step = b.step("test", "Run library tests");
-    test_step.dependOn(&main_tests.step);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&tests_run_step.step);
 }
