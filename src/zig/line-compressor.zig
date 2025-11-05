@@ -12,16 +12,20 @@ pub fn main() !void {
         std.process.exit(0);
     };
 
-    var data = std.ArrayList(u8).init(allocator);
-    defer data.deinit();
+    var threaded: std.Io.Threaded = .init(allocator);
+    defer threaded.deinit();
 
     std.debug.print("Reading file: {s}\n", .{file_name});
 
     var file = try std.fs.cwd().openFile(file_name, .{});
-    try file.reader().readAllArrayList(&data, 500_000_000);
+
+    var buf: [1024]u8 = undefined;
+    var r = file.reader(threaded.io(), &buf);
+    const data = try r.interface.allocRemaining(allocator, .unlimited);
+    defer allocator.free(data);
 
     var n: usize = 0;
-    var lines = std.mem.split(u8, data.items, "\n");
+    var lines = std.mem.splitAny(u8, data, "\n");
     while (lines.next()) |line| {
         _ = line;
         n += 1;
@@ -39,7 +43,7 @@ pub fn main() !void {
         std.debug.print("Adding 1% of lines...\n", .{});
         var t = minz.Trainer.init(&tbl);
         var i: usize = 0;
-        lines = std.mem.split(u8, data.items, "\n");
+        lines = std.mem.splitAny(u8, data, "\n");
         while (lines.next()) |line| {
             if (i % 100 == 0) {
                 t.add(line);
@@ -54,15 +58,15 @@ pub fn main() !void {
     var compressed_size: usize = 0;
     std.debug.print("Compressing...\n", .{});
 
-    var buf = std.ArrayList(u8).init(allocator);
-    defer buf.deinit();
+    var result = std.Io.Writer.Allocating.init(allocator);
+    defer result.deinit();
 
-    lines = std.mem.split(u8, data.items, "\n");
+    lines = std.mem.splitAny(u8, data, "\n");
     while (lines.next()) |line| {
         uncompressed_size += line.len;
-        try minz.encode(buf.writer(), line, &tbl);
-        compressed_size += buf.items.len;
-        buf.clearRetainingCapacity();
+        try minz.encode(&result.writer, line, &tbl);
+        compressed_size += result.written().len;
+        result.shrinkRetainingCapacity(0);
     }
 
     std.debug.print("Uncompressed: {}\nCompressed:   {}\n", .{ uncompressed_size, compressed_size });

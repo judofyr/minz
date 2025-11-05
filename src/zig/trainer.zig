@@ -67,14 +67,14 @@ pub const Trainer = struct {
         } else {
             const d = self.table.lookup(@intCast(code - 256));
             const len = @min(@as(u8, @intCast(d.len)), MAX_SYMBOL - i.*);
-            std.mem.copy(u8, buf[i.*..], d[0..len]);
+            std.mem.copyForwards(u8, buf[i.*..], d[0..len]);
             i.* += len;
         }
     }
 
     pub fn build(self: *const Trainer, allocator: std.mem.Allocator) !Table {
-        var cands = std.ArrayList(Cand).init(allocator);
-        defer cands.deinit();
+        var cands = std.ArrayList(Cand).empty;
+        defer cands.deinit(allocator);
 
         // The number of entries in the table.
         const m: usize = 256 + @as(usize, self.table.n);
@@ -87,8 +87,8 @@ pub const Trainer = struct {
             self.decode(code1, &cand, &i);
 
             if (self.count1[code1] > 0) {
-                var gain1 = i * self.count1[code1];
-                try cands.append(Cand{ .data = cand, .len = i, .gain = gain1 });
+                const gain1 = i * self.count1[code1];
+                try cands.append(allocator, Cand{ .data = cand, .len = i, .gain = gain1 });
             }
 
             // If the first symbol is already of length 8 there's nothing to combine.
@@ -100,8 +100,8 @@ pub const Trainer = struct {
                 self.decode(code2, &cand, &j);
 
                 if (self.count2[code1][code2] > 0) {
-                    var gain2 = j * self.count2[code1][code2];
-                    try cands.append(Cand{ .data = cand, .len = j, .gain = gain2 });
+                    const gain2 = j * self.count2[code1][code2];
+                    try cands.append(allocator, Cand{ .data = cand, .len = j, .gain = gain2 });
                 }
             }
         }
@@ -149,9 +149,9 @@ test "training" {
 
     for (expected_compression) |c| {
         var compressed: [100]u8 = undefined;
-        var fbs = std.io.fixedBufferStream(&compressed);
-        try encode(fbs.writer(), target, &tbl);
-        try testing.expectEqual(c, fbs.getWritten().len);
+        var w = std.Io.Writer.fixed(&compressed);
+        try encode(&w, target, &tbl);
+        try testing.expectEqual(c, w.buffered().len);
 
         var t = try testing.allocator.create(Trainer);
         defer testing.allocator.destroy(t);

@@ -1,7 +1,7 @@
 const std = @import("std");
 const Table = @import("./table.zig").Table;
 
-pub fn encode(writer: anytype, data: []const u8, tbl: *const Table) !void {
+pub fn encode(writer: *std.Io.Writer, data: []const u8, tbl: *const Table) !void {
     var i: usize = 0;
     while (i < data.len) {
         if (tbl.findLongestSymbol(data[i..])) |sym| {
@@ -27,8 +27,8 @@ test "encode" {
     const data = "hello worldz";
 
     var output: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&output);
-    try encode(fbs.writer(), data, &tbl);
+    var w = std.Io.Writer.fixed(&output);
+    try encode(&w, data, &tbl);
 
-    try testing.expectEqualSlices(u8, &[_]u8{ 1, 255, ' ', 2, 255, 'z' }, fbs.getWritten());
+    try testing.expectEqualSlices(u8, &[_]u8{ 1, 255, ' ', 2, 255, 'z' }, w.buffered());
 }

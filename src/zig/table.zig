@@ -32,7 +32,7 @@ pub const Table = struct {
         const idx = self.n;
         self.n += 1;
         self.lengths[idx] = @intCast(data.len);
-        std.mem.copy(u8, &self.symbols[idx], data);
+        std.mem.copyForwards(u8, &self.symbols[idx], data);
     }
 
     /// buildIndex builds the index used for encoding. This must be called after all `insert`
@@ -64,7 +64,7 @@ pub const Table = struct {
     pub fn findLongestSymbol(self: *const Table, data: []const u8) ?Symbol {
         const fst = @as(usize, data[0]);
         var idx = self.index[fst];
-        var idx_stop = self.index[fst + 1];
+        const idx_stop = self.index[fst + 1];
         while (idx < idx_stop) : (idx += 1) {
             const sym = self.lookup(idx);
             if (std.mem.startsWith(u8, data, sym)) {
@@ -84,7 +84,7 @@ pub const Table = struct {
         return null;
     }
 
-    pub fn writeTo(self: *const Table, writer: anytype) !void {
+    pub fn writeTo(self: *const Table, writer: *std.Io.Writer) !void {
         try writer.writeAll(&PREFIX);
         try writer.writeByte(1);
         try writer.writeByte(self.n);
@@ -93,20 +93,22 @@ pub const Table = struct {
         try writer.writeAll(bin_symbols[0 .. self.n * MAX_SYMBOL]);
     }
 
-    pub fn readFrom(reader: anytype) !Table {
+    pub fn readFrom(reader: *std.Io.Reader) !Table {
         var res = Table.init();
 
-        const prefix = try reader.readBytesNoEof(PREFIX.len);
-        if (!std.mem.eql(u8, &PREFIX, &prefix)) return error.InvalidFormat;
+        const prefix = try reader.take(PREFIX.len);
+        if (!std.mem.eql(u8, &PREFIX, prefix)) return error.InvalidFormat;
 
-        const version = try reader.readByte();
+        const version = try reader.takeByte();
         if (version != 1) return error.InvalidFormat;
 
-        const n = try reader.readByte();
-        try reader.readNoEof(res.lengths[0..n]);
+        const n = try reader.takeByte();
+        var lengths_writer = std.Io.Writer.fixed(&res.lengths);
+        _ = try reader.stream(&lengths_writer, .limited(n));
 
         const bin_symbols: [*]u8 = @ptrCast(&res.symbols);
-        try reader.readNoEof(bin_symbols[0 .. n * MAX_SYMBOL]);
+        var bin_symbols_writer = std.Io.Writer.fixed(bin_symbols[0 .. n * MAX_SYMBOL]);
+        _ = try reader.stream(&bin_symbols_writer, .unlimited);
 
         res.n = n;
         res.buildIndex();
@@ -131,15 +133,15 @@ test "serialization" {
     tbl.insert("hello");
     tbl.insert("world");
 
-    var buf = std.ArrayList(u8).init(testing.allocator);
-    defer buf.deinit();
+    var allocating = std.Io.Writer.Allocating.init(testing.allocator);
+    defer allocating.deinit();
 
-    try tbl.writeTo(buf.writer());
+    try tbl.writeTo(&allocating.writer);
     // Prefix, version, n, (lengths + symbols) * 2 entries.
-    try testing.expectEqual(@as(usize, 4 + 1 + 1 + (1 + MAX_SYMBOL) * 2), buf.items.len);
+    try testing.expectEqual(@as(usize, 4 + 1 + 1 + (1 + MAX_SYMBOL) * 2), allocating.written().len);
 
-    var fbs = std.io.fixedBufferStream(buf.items);
-    var tbl2 = try Table.readFrom(fbs.reader());
+    var r = std.Io.Reader.fixed(allocating.written());
+    var tbl2 = try Table.readFrom(&r);
     try testing.expectEqualSlices(u8, "hello", tbl2.lookup(0));
     try testing.expectEqualSlices(u8, "world", tbl2.lookup(1));
     try testing.expectEqualSlices(u8, "", tbl2.lookup(2));

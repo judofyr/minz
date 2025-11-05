@@ -1,7 +1,7 @@
 const std = @import("std");
 const Table = @import("./table.zig").Table;
 
-pub fn decode(writer: anytype, data: []const u8, table: *const Table) !void {
+pub fn decode(writer: *std.Io.Writer, data: []const u8, table: *const Table) !void {
     var i: usize = 0;
     while (i < data.len) {
         if (data[i] == 255) {
@@ -23,8 +23,8 @@ test "decoding" {
     const data = [_]u8{ 0, 255, ' ', 1 };
 
     var output: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&output);
-    try decode(fbs.writer(), &data, &tbl);
+    var w = std.Io.Writer.fixed(&output);
+    try decode(&w, &data, &tbl);
 
-    try testing.expectEqualSlices(u8, "hello world", fbs.getWritten());
+    try testing.expectEqualSlices(u8, "hello world", w.buffered());
 }
